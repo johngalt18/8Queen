@@ -1,45 +1,30 @@
 import math
 import random
-import numpy
 
 
 class Individual:
-    def __init__(self, chrome=None):
+    def __init__(self, chromosome=None):
+        self.queen_len = 3
         self.chromosome_len = 24
         self.queens_number = 8
-        self.queen_len = 3
-        if chrome is None:
-            self.chromosome = ''
-            for vertical in range(self.queens_number):
-                for bit_number in range(self.queen_len):
-                    bit = random.randint(0, 1)
-                    self.chromosome += str(bit)
+        self.grey = {'000': 0, '001': 1, '011': 2, '010': 3, '110': 4, '111': 5, '101': 6, '100': 7}
+        if chromosome is None:
+            random.seed()
+            self.chromosome = str()
+            for queen in range(self.chromosome_len):
+                self.chromosome += str(random.randint(0, 1))
         else:
-            self.chromosome = str(chrome)
+            self.chromosome = str(chromosome)
 
-    def get_chrome(self):
+    def get_chromosome(self):
         return self.chromosome
-
-    def fitness_function(self):
-        fitness_sum = 0
-        for ver in range(0, self.chromosome_len, self.queen_len):
-            first_queen = self.chromosome[ver: ver + self.queen_len]
-            for hor in range(0, self.chromosome_len, self.queen_len):
-                second_queen = self.chromosome[hor: hor + self.queen_len]
-                if first_queen == second_queen and ver != hor:
-                    fitness_sum += 1
-                if ver != hor and (math.fabs(int(first_queen, 2) - int(second_queen, 2)) ==
-                                   math.fabs(hor / self.queen_len - ver / self.queen_len)):
-                    fitness_sum += 1
-        fitness_sum = 8 - fitness_sum / 8
-        return fitness_sum
 
     def visualisation(self):
         solution = str()
         visual = str()
         for horizontal in range(0, self.chromosome_len, self.queen_len):
-            queen = self.chromosome[horizontal:horizontal + self.queen_len]
-            solution += str(int(queen, 2))
+            queen = self.chromosome[horizontal:horizontal+self.queen_len]
+            solution += str(self.grey[queen])
         for cell in range(self.queens_number * self.queens_number):
             if cell % 8 == 0:
                 visual += '\n'
@@ -49,48 +34,57 @@ class Individual:
                 visual += '+'
         return visual
 
+    def fitness_function(self):
+        fitness = 0
+        for ver in range(0, self.chromosome_len, self.queen_len):
+            first_queen = self.chromosome[ver: ver + self.queen_len]
+            for hor in range(0, self.chromosome_len, self.queen_len):
+                second_queen = self.chromosome[hor: hor + self.queen_len]
+                if hor != ver and self.grey[first_queen] == self.grey[second_queen]:
+                    fitness += 1.0
+                if hor != ver and (math.fabs(self.grey[first_queen] - self.grey[second_queen]) ==
+                                       math.fabs(hor/self.queen_len - ver/self.queen_len)):
+                    fitness += 1.0
+        fitness = 8.0 - fitness / 8.0
+        return fitness
 
-class Solver_8_queens:
-    def __init__(self, pop_size=100, cross_prob=0.7, mut_prob=0.25):
+
+class Solver_8_Queens:
+    def __init__(self, pop_size=200, tournament_size=4, cross_prob=0.7, mut_prob=0.7):
         self.pop_size = pop_size
         self.cross_prob = cross_prob
         self.mut_prob = mut_prob
-        self.population = [Individual() for i in range(pop_size)]
+        self.tournament_size = tournament_size
+        self.population = [Individual() for ind in range(pop_size)]
         self.fitness_list = list()
         for ind in self.population:
             self.fitness_list.append(ind.fitness_function())
 
-    def roulette_wheel(self):
-        probability = list()
-        ind_position = [i for i in range(self.pop_size)]
-        fitness_sum = float()
-        parents = list()
-        for ind in self.fitness_list:
-            fitness_sum += ind
-
-        for i in self.fitness_list:
-            choose_chance = i / fitness_sum
-            probability.append(choose_chance)
-
-        selected_individuals = numpy.random.choice(ind_position, self.pop_size, True, probability)
-        for ind in selected_individuals:
-            parents.append(self.population[ind])
-        return parents
+    def tournament_selection(self):
+        parent_pool = list()
+        for tour in range(self.pop_size):
+            tour_pairs = [random.randrange(self.pop_size) for individual in range(self.tournament_size)]
+            fitness = [self.fitness_list[individual] for individual in tour_pairs]
+            individual_tour_winner = max(enumerate(fitness, 0), key=lambda individual_index: individual_index[1])[0]
+            parent_pool.append(self.population[tour_pairs[individual_tour_winner]])
+        return parent_pool
 
     def reproduce(self, parents):
         chromosome_len = self.population[0].chromosome_len
         next_generation = list()
-        for pair in range(len(parents)//2):
-            first_parent, second_parent = random.randint(0, len(parents) - 1), random.randint(0, len(parents) - 1)
-            while first_parent == second_parent:
-                second_parent = random.randint(0, len(parents) - 1)
-            cross_prob = random.random()
-            if cross_prob <= self.cross_prob:
-                cross_point = random.randrange(chromosome_len)
-                first_child = Individual(parents[first_parent].get_chrome()[0:cross_point] +
-                                         parents[second_parent].get_chrome()[cross_point:chromosome_len])
-                second_child = Individual(parents[second_parent].get_chrome()[0:cross_point] +
-                                          parents[first_parent].get_chrome()[cross_point:chromosome_len])
+        while len(next_generation) < len(self.population):
+            first_cross_point, second_cross_point = random.randrange(chromosome_len), random.randrange(chromosome_len)
+            first_parent, second_parent = random.randrange(self.pop_size), random.randrange(self.pop_size)
+            while first_cross_point is second_cross_point or first_parent is second_parent:
+                second_cross_point, second_parent = random.randrange(chromosome_len), random.randrange(self.pop_size)
+            points = [first_cross_point, second_cross_point]
+            if random.random() <= self.cross_prob:
+                first_child = Individual(parents[first_parent].get_chromosome()[0:min(points)] +
+                                         parents[second_parent].get_chromosome()[min(points):max(points)] +
+                                         parents[first_parent].get_chromosome()[max(points):chromosome_len])
+                second_child = Individual(parents[second_parent].get_chromosome()[0:min(points)] +
+                                          parents[first_parent].get_chromosome()[min(points):max(points)] +
+                                          parents[second_parent].get_chromosome()[max(points):chromosome_len])
             else:
                 first_child, second_child = parents[first_parent], parents[second_parent]
             next_generation.append(first_child)
@@ -101,15 +95,17 @@ class Solver_8_queens:
         chromosome_len = self.population[0].chromosome_len
         for ind in range(len(next_generation)):
             if random.random() <= self.mut_prob:
-                mutated = random.randrange(chromosome_len)
-                mutation = '0'
-                if next_generation[ind].get_chrome()[mutated] == '0':
+                mutated_bit = random.randrange(chromosome_len)
+                if next_generation[ind].get_chromosome()[mutated_bit] is '0':
                     mutation = '1'
-                    next_generation[ind] = Individual(next_generation[ind].get_chrome()[0:mutated] + mutation +
-                                                      next_generation[ind].get_chrome()[mutated + 1:chromosome_len])
+                    next_generation[ind] = Individual(next_generation[ind].get_chromosome()[0:mutated_bit] + mutation +
+                                                      next_generation[ind].get_chromosome()[
+                                                      mutated_bit + 1:chromosome_len])
                 else:
-                    next_generation[ind] = Individual(next_generation[ind].get_chrome()[0:mutated] + mutation +
-                                                      next_generation[ind].get_chrome()[mutated + 1:chromosome_len])
+                    mutation = '0'
+                    next_generation[ind] = Individual(next_generation[ind].get_chromosome()[0:mutated_bit] + mutation +
+                                                      next_generation[ind].get_chromosome()[
+                                                      mutated_bit + 1:chromosome_len])
         return next_generation
 
     def best_fitness(self):
@@ -118,14 +114,14 @@ class Solver_8_queens:
         return best_fitness, best_individual
 
     def proceed(self):
-        parents = self.roulette_wheel()
+        parents = self.tournament_selection()
         next_generation = self.reproduce(parents)
         next_generation = self.mutation(next_generation)
         self.population = next_generation
         for ind in range(len(self.population)):
             self.fitness_list[ind] = self.population[ind].fitness_function()
 
-    def solve(self, min_fitness=7.9, max_epochs=3000):
+    def solve(self, min_fitness=7.9, max_epochs=None):
         best_fitness, best_individual = self.best_fitness()
         epochs_num = int()
         while (min_fitness is None or best_fitness < min_fitness) and (max_epochs is None or epochs_num < max_epochs):
@@ -134,3 +130,5 @@ class Solver_8_queens:
             epochs_num += 1
         visual = self.population[best_individual].visualisation()
         return best_fitness, epochs_num, visual
+
+    
